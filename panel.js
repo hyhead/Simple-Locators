@@ -10,20 +10,38 @@ function inspectElement(el) {
     let curr = element;
     while (curr && curr.nodeType === 1) {
       const tag = curr.nodeName.toLowerCase();
+      
+      // 1. ID
       if (curr.id) {
         path.unshift('#' + CSS.escape(curr.id));
         break;
       }
+      
+      // 2. Name
       const name = curr.getAttribute('name');
       if (name) {
         path.unshift(tag + '[name="' + CSS.escape(name) + '"]');
         break;
       }
+
+      // 3. data-testid
       const testId = curr.getAttribute('data-testid');
       if (testId) {
         path.unshift(tag + '[data-testid="' + CSS.escape(testId) + '"]');
         break;
       }
+
+      // 4. Class Name
+      if (curr.className && typeof curr.className === 'string') {
+        const classes = curr.className.trim().split(/\s+/).filter(Boolean);
+        if (classes.length > 0) {
+          const classSelector = tag + '.' + classes.map(c => CSS.escape(c)).join('.');
+          path.unshift(classSelector);
+          break;
+        }
+      }
+
+      // Fallback: Structural nth-of-type traversal
       let sibling = curr;
       let nth = 1;
       while ((sibling = sibling.previousElementSibling)) {
@@ -36,11 +54,39 @@ function inspectElement(el) {
   }
 
   function getXPath(element) {
+    const tag = element.tagName.toLowerCase();
+
+    // 1. ID
     if (element.id) return '//*[@id="' + element.id + '"]';
+
+    // 2. Name
     const name = element.getAttribute('name');
-    if (name) return '//' + element.tagName.toLowerCase() + '[@name="' + name + '"]';
+    if (name) return '//' + tag + '[@name="' + name + '"]';
+
+    // 3. data-testid
     const testId = element.getAttribute('data-testid');
-    if (testId) return '//' + element.tagName.toLowerCase() + '[@data-testid="' + testId + '"]';
+    if (testId) return '//' + tag + '[@data-testid="' + testId + '"]';
+
+    // 4. Class Name
+    if (element.className && typeof element.className === 'string') {
+      const classVal = element.className.trim();
+      if (classVal) return '//' + tag + '[@class="' + classVal + '"]';
+    }
+
+    // 5. Link Text & 6. Partial Link Text
+    const textContent = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
+    if (textContent) {
+      if (textContent.length <= 40) {
+        // Exact Link Text
+        return `//${tag}[text()="${textContent}"]`;
+      } else {
+        // Partial Link Text
+        const partialText = textContent.substring(0, 20);
+        return `//${tag}[contains(text(), "${partialText}")]`;
+      }
+    }
+
+    // Fallback: Structural XPath
     if (element === document.body) return '/html/body';
 
     let ix = 0;
@@ -48,7 +94,7 @@ function inspectElement(el) {
     for (let i = 0; i < siblings.length; i++) {
       const sibling = siblings[i];
       if (sibling === element) {
-        return getXPath(element.parentNode) + '/' + element.tagName.toLowerCase() + '[' + (ix + 1) + ']';
+        return getXPath(element.parentNode) + '/' + tag + '[' + (ix + 1) + ']';
       }
       if (sibling.nodeType === 1 && sibling.tagName === element.tagName) {
         ix++;
@@ -77,21 +123,25 @@ function updateSelectors() {
   );
 }
 
-function setupCopy(button, textGetter) {
-  button.addEventListener('click', () => {
+function setupCopy(triggerEl, textGetter, feedbackBtn) {
+  triggerEl.addEventListener('click', () => {
     const text = textGetter();
-    if (!text || text === 'No element selected') return;
+    if (!text || text === 'No element selected' || text === 'Select an element to inspect') return;
     navigator.clipboard.writeText(text).then(() => {
-      button.innerHTML = ICON_CHECK;
+      feedbackBtn.innerHTML = ICON_CHECK;
       setTimeout(() => {
-        button.innerHTML = ICON_COPY;
+        feedbackBtn.innerHTML = ICON_COPY;
       }, 1500);
     });
   });
 }
 
-setupCopy(copyCssBtn, () => cssVal.textContent);
-setupCopy(copyXpathBtn, () => xpathVal.textContent);
+// Bind copy handlers to both buttons and code elements
+setupCopy(copyCssBtn, () => cssVal.textContent, copyCssBtn);
+setupCopy(cssVal, () => cssVal.textContent, copyCssBtn);
+
+setupCopy(copyXpathBtn, () => xpathVal.textContent, copyXpathBtn);
+setupCopy(xpathVal, () => xpathVal.textContent, copyXpathBtn);
 
 // Update automatically whenever element selection changes in DevTools
 chrome.devtools.panels.elements.onSelectionChanged.addListener(updateSelectors);

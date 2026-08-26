@@ -3,8 +3,8 @@ body {
   padding: 10px;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 12px;
-  background-color: #1e1e2e;
-  color: #cdd6f4;
+  background-color: #202124;
+  color: #e8eaed;
 }
 
 .container {
@@ -16,7 +16,7 @@ body {
 .section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .header {
@@ -27,7 +27,7 @@ body {
 
 .label {
   font-weight: 600;
-  color: #a6adc8;
+  color: #9aa0a6;
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.5px;
@@ -35,33 +35,43 @@ body {
 
 code {
   display: block;
-  background: #313244;
-  color: #a6e3a1;
-  padding: 6px 8px;
+  background: #292a2d;
+  color: #81c995;
+  padding: 8px;
+  border: 1px solid #3c4043;
   border-radius: 4px;
-  font-family: monospace;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 12px;
   word-break: break-all;
   white-space: pre-wrap;
   user-select: all;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+code:hover {
+  background: #35363a;
+  border-color: #8ab4f8;
+  color: #8ab4f8;
 }
 
 .icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  background: #313244;
-  color: #89b4fa;
-  border: none;
+  width: 24px;
+  height: 24px;
+  background: #292a2d;
+  color: #8ab4f8;
+  border: 1px solid #3c4043;
   border-radius: 4px;
   cursor: pointer;
   padding: 0;
-  transition: background 0.2s;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .icon-btn:hover {
-  background: #45475a;
-  color: #b4befe;
+  background: #35363a;
+  border-color: #8ab4f8;
+  color: #c58af9;
 }
