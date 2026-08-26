@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "DevTools Selectors Sidebar",
+  "version": "1.0",
+  "description": "Adds a static DevTools sidebar tab showing CSS selector and XPath.",
+  "devtools_page": "devtools.html"
+}
