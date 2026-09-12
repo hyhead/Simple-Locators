@@ -6,6 +6,25 @@
 </head>
 <body>
   <div class="container">
+
+    <!-- iFrame Detection Banner -->
+    <div id="iframe-banner" class="iframe-banner" hidden>
+      <span class="iframe-icon">🖼️</span>
+      <span>Element is inside an <strong>iFrame</strong> (<span id="iframe-info"></span>)</span>
+    </div>
+
+    <!-- Live Selector Tester (Top) -->
+    <div class="section">
+      <div class="header">
+        <span class="label">Live Selector Tester</span>
+        <span id="test-badge" class="badge default">0 matches</span>
+      </div>
+      <div class="tester-wrap">
+        <input type="text" id="test-input" placeholder="Type CSS or XPath selector..." autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+
+    <!-- CSS Selector -->
     <div class="section">
       <div class="header">
         <span class="label">CSS Selector</span>
@@ -13,9 +32,13 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         </button>
       </div>
-      <code id="css-val">Select an element to inspect</code>
+      <div class="locator-wrap">
+        <code id="css-val" title="Hover to highlight elements on page">Select an element to inspect</code>
+        <div id="css-warning" class="warning" hidden aria-live="polite"></div>
+      </div>
     </div>
 
+    <!-- XPath -->
     <div class="section">
       <div class="header">
         <span class="label">XPath</span>
@@ -23,7 +46,16 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         </button>
       </div>
-      <code id="xpath-val">Select an element to inspect</code>
+      <div class="locator-wrap">
+        <code id="xpath-val" title="Hover to highlight elements on page">Select an element to inspect</code>
+        <div id="xpath-warning" class="warning" hidden aria-live="polite"></div>
+      </div>
+    </div>
+
+    <!-- Highlighted Footer Hint -->
+    <div class="footer-hint">
+      <span class="hint-icon">💡</span>
+      <span>Click to copy • Hover locator box to highlight on page</span>
     </div>
   </div>
   <script src="panel.js"></script>

@@ -3,5 +3,10 @@
   "name": "DevTools Selectors Sidebar",
   "version": "1.0",
   "description": "Adds a static DevTools sidebar tab showing CSS selector and XPath.",
-  "devtools_page": "devtools.html"
+  "devtools_page": "devtools.html",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
 }
