@@ -211,12 +211,13 @@ code.error-highlight:hover {
   border: 1px solid rgba(242, 139, 130, 0.4);
 }
 
-/* Page Scanner Section (Middle & Larger) */
+/* Page Scanner Section */
 .scanner-section {
+  position: relative;
   background: #26282b;
   border: 1px solid rgba(235, 103, 156, 0.3);
   border-radius: 6px;
-  padding: 10px;
+  padding: 10px 10px 4px 10px;
   transition: border-color 0.2s ease;
 }
 
@@ -303,7 +304,8 @@ code.error-highlight:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 240px;
+  height: 200px;
+  min-height: 80px;
   overflow-y: auto;
   padding-right: 4px;
   margin-top: 4px;
@@ -381,6 +383,38 @@ code.error-highlight:hover {
   background: #35363a;
   color: rgb(102, 237, 174);
   border-color: rgb(102, 237, 174);
+}
+
+/* Scanner Resizer Handle */
+.scanner-resize-handle {
+  height: 10px;
+  margin-top: 4px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  user-select: none;
+}
+
+.scanner-resize-handle::after {
+  content: "";
+  width: 36px;
+  height: 4px;
+  background-color: #3c4043;
+  border-radius: 2px;
+  transition: background-color 0.2s ease, width 0.2s ease;
+}
+
+.scanner-resize-handle:hover::after,
+.scanner-resize-handle:active::after {
+  background-color: rgb(235, 103, 156);
+  width: 48px;
+}
+
+.scanner-section.scanned-active .scanner-resize-handle:hover::after,
+.scanner-section.scanned-active .scanner-resize-handle:active::after {
+  background-color: rgb(102, 237, 174);
 }
 
 /* Highlighted Footer Hint */

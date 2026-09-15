@@ -191,6 +191,21 @@ function clearHighlightOnPage() {
   existing.forEach(el => el.remove());
 }
 
+// Safe evaluation wrapper to prevent uncaught runtime DevTools exceptions
+function safeEval(script, callback) {
+  try {
+    chrome.devtools.inspectedWindow.eval(script, (result, isException) => {
+      if (chrome.runtime.lastError) {
+        if (callback) callback(null, true);
+        return;
+      }
+      if (callback) callback(result, isException);
+    });
+  } catch (err) {
+    if (callback) callback(null, true);
+  }
+}
+
 // Selects and focuses element inside DevTools Elements panel DOM
 function selectInDevToolsElements(locator, type) {
   if (!locator) return;
@@ -200,7 +215,7 @@ function selectInDevToolsElements(locator, type) {
   } else {
     evalCode = `inspect(document.evaluate(${JSON.stringify(locator)}, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue)`;
   }
-  chrome.devtools.inspectedWindow.eval(evalCode);
+  safeEval(evalCode);
 }
 
 // --- Page Scanner Logic (Evaluated on Inspected Page) ---
@@ -358,7 +373,7 @@ function setWarning(warningEl, locator, matchCount, locatorName, codeEl) {
 }
 
 function updateSelectors() {
-  chrome.devtools.inspectedWindow.eval(
+  safeEval(
     `(${inspectElement.toString()})($0)`,
     (result, isException) => {
       if (!isException && result) {
@@ -391,13 +406,11 @@ function updateSelectors() {
 function triggerHighlight(locatorGetter, type) {
   const text = locatorGetter();
   if (!text || text === 'No element selected' || text === 'Select an element to inspect') return;
-  chrome.devtools.inspectedWindow.eval(
-    `(${highlightOnPage.toString()})(${JSON.stringify(text)}, "${type}")`
-  );
+  safeEval(`(${highlightOnPage.toString()})(${JSON.stringify(text)}, "${type}")`);
 }
 
 function removeHighlight() {
-  chrome.devtools.inspectedWindow.eval(`(${clearHighlightOnPage.toString()})()`);
+  safeEval(`(${clearHighlightOnPage.toString()})()`);
 }
 
 cssVal.addEventListener('mouseenter', () => triggerHighlight(() => cssVal.textContent, 'css'));
@@ -419,7 +432,7 @@ function runLiveTester() {
   const isXpath = query.startsWith('//') || query.startsWith('(') || query.startsWith('./');
   const type = isXpath ? 'xpath' : 'css';
 
-  chrome.devtools.inspectedWindow.eval(
+  safeEval(
     `(${highlightOnPage.toString()})(${JSON.stringify(query)}, "${type}")`,
     (count, isException) => {
       if (isException || count === undefined || count === 0) {
@@ -467,9 +480,27 @@ updateSelectors();
 
 // --- Page Ready State Polling & Navigation Observer ---
 let pollReadyInterval = null;
+let currentInspectedUrl = '';
+
+// Checks for website link/URL changes (supports both standard and SPA routing)
+function checkUrlChange() {
+  safeEval(
+    `window.location.href`,
+    (url, isException) => {
+      if (!isException && url) {
+        if (currentInspectedUrl && currentInspectedUrl !== url) {
+          currentInspectedUrl = url;
+          resetScannerState();
+        } else if (!currentInspectedUrl) {
+          currentInspectedUrl = url;
+        }
+      }
+    }
+  );
+}
 
 function checkPageReadyState() {
-  chrome.devtools.inspectedWindow.eval(
+  safeEval(
     `document.readyState === 'complete'`,
     (isComplete, isException) => {
       if (!isException && isComplete) {
@@ -478,8 +509,14 @@ function checkPageReadyState() {
           clearInterval(pollReadyInterval);
           pollReadyInterval = null;
         }
+        if (scannedLocatorsData.length === 0 && !scanBtn.classList.contains('scanned')) {
+          scanResultsWrap.innerHTML = '<div class="empty-msg">Click scan to find inputs, buttons, links, and data-testid elements.</div>';
+        }
       } else {
         scanBtn.disabled = true;
+        if (scannedLocatorsData.length === 0 && !scanBtn.classList.contains('scanned')) {
+          scanResultsWrap.innerHTML = '<div class="empty-msg">Waiting for page to load completely...</div>';
+        }
         if (!pollReadyInterval) {
           pollReadyInterval = setInterval(checkPageReadyState, 500);
         }
@@ -494,16 +531,25 @@ function resetScannerState() {
   scannerSection.classList.remove('scanned-active');
   scannedLocatorsData = [];
   scanResultsWrap.innerHTML = '<div class="empty-msg">Waiting for page to load completely...</div>';
+
+  safeEval(`window.location.href`, (url) => {
+    if (url) currentInspectedUrl = url;
+  });
+
   checkPageReadyState();
 }
 
-// Reset button color to RGB(235, 103, 156) and disable on page refresh/navigation
+// Reset on full page refresh / top-level navigation
 chrome.devtools.network.onNavigated.addListener(() => {
   resetScannerState();
 });
 
 // Initial load check
 checkPageReadyState();
+checkUrlChange();
+
+// Periodically check for client-side link and URL changes safely
+setInterval(checkUrlChange, 1000);
 
 // --- Page Scanner UI Event Handlers ---
 let scannedLocatorsData = [];
@@ -544,10 +590,8 @@ function renderScannedLocators() {
     codeEl.addEventListener('mouseleave', removeHighlight);
 
     const performCopyAndSelect = () => {
-      // 1. Select the element inside the DevTools Elements panel DOM tree
       selectInDevToolsElements(locatorString, selectedFormat);
 
-      // 2. Copy the locator string to clipboard
       navigator.clipboard.writeText(locatorString).then(() => {
         itemCopyBtn.innerHTML = ICON_CHECK;
         const originalText = codeEl.textContent;
@@ -577,7 +621,7 @@ scanBtn.addEventListener('click', () => {
   if (scanBtn.disabled) return;
 
   scanBtn.textContent = 'Scanning...';
-  chrome.devtools.inspectedWindow.eval(
+  safeEval(
     `(${scanPageElements.toString()})()`,
     (results, isException) => {
       scanBtn.textContent = '⚡ Scan Page';
@@ -586,7 +630,6 @@ scanBtn.addEventListener('click', () => {
         return;
       }
 
-      // Change button color to RGB(102, 237, 174) upon scan completion
       scanBtn.classList.add('scanned');
       scannerSection.classList.add('scanned-active');
 
@@ -595,3 +638,40 @@ scanBtn.addEventListener('click', () => {
     }
   );
 });
+
+// --- Page Scanner Resizer Handle Event Handler ---
+function initScannerResizer() {
+  const resizeHandle = document.getElementById('scanner-resize-handle');
+  const targetContainer = document.getElementById('scanner-results');
+
+  if (!resizeHandle || !targetContainer) return;
+
+  let startY = 0;
+  let startHeight = 0;
+
+  const doDrag = (e) => {
+    const newHeight = startHeight + (e.clientY - startY);
+    if (newHeight >= 60 && newHeight <= 800) {
+      targetContainer.style.height = `${newHeight}px`;
+    }
+  };
+
+  const stopDrag = () => {
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', doDrag);
+    document.removeEventListener('mouseup', stopDrag);
+  };
+
+  resizeHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startY = e.clientY;
+    startHeight = parseInt(document.defaultView.getComputedStyle(targetContainer).height, 10) || targetContainer.clientHeight;
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', doDrag);
+    document.addEventListener('mouseup', stopDrag);
+  });
+}
+
+initScannerResizer();
