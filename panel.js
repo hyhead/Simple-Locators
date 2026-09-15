@@ -168,13 +168,13 @@ function highlightOnPage(selector, type) {
       left: ${rect.left}px;
       width: ${rect.width}px;
       height: ${rect.height}px;
-      background: rgba(138, 180, 248, 0.35);
-      border: 2px solid #8ab4f8;
+      background: rgba(102, 237, 174, 0.35);
+      border: 2px solid rgb(102, 237, 174);
       border-radius: 2px;
       z-index: 99999999;
       pointer-events: none;
       box-sizing: border-box;
-      box-shadow: 0 0 8px rgba(138, 180, 248, 0.6);
+      box-shadow: 0 0 8px rgba(102, 237, 174, 0.6);
     `;
     document.body.appendChild(overlay);
   });
@@ -191,6 +191,136 @@ function clearHighlightOnPage() {
   existing.forEach(el => el.remove());
 }
 
+// Selects and focuses element inside DevTools Elements panel DOM
+function selectInDevToolsElements(locator, type) {
+  if (!locator) return;
+  let evalCode = '';
+  if (type === 'css') {
+    evalCode = `inspect(document.querySelector(${JSON.stringify(locator)}))`;
+  } else {
+    evalCode = `inspect(document.evaluate(${JSON.stringify(locator)}, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue)`;
+  }
+  chrome.devtools.inspectedWindow.eval(evalCode);
+}
+
+// --- Page Scanner Logic (Evaluated on Inspected Page) ---
+function scanPageElements() {
+  function getCssSelector(element) {
+    const path = [];
+    let curr = element;
+    while (curr && curr.nodeType === 1) {
+      const tag = curr.nodeName.toLowerCase();
+      if (curr.id) {
+        path.unshift('#' + CSS.escape(curr.id));
+        break;
+      }
+      const name = curr.getAttribute('name');
+      if (name) {
+        path.unshift(tag + '[name="' + CSS.escape(name) + '"]');
+        break;
+      }
+      const testId = curr.getAttribute('data-testid');
+      if (testId) {
+        path.unshift(tag + '[data-testid="' + CSS.escape(testId) + '"]');
+        break;
+      }
+      if (curr.className && typeof curr.className === 'string') {
+        const classes = curr.className.trim().split(/\s+/).filter(Boolean);
+        if (classes.length > 0) {
+          path.unshift(tag + '.' + classes.map(c => CSS.escape(c)).join('.'));
+          break;
+        }
+      }
+      let sibling = curr;
+      let nth = 1;
+      while ((sibling = sibling.previousElementSibling)) {
+        if (sibling.nodeName.toLowerCase() === tag) nth++;
+      }
+      path.unshift(nth !== 1 ? `${tag}:nth-of-type(${nth})` : tag);
+      curr = curr.parentElement;
+    }
+    return path.join(' > ');
+  }
+
+  function getXPath(element) {
+    const tag = element.tagName.toLowerCase();
+    if (element.id) return '//*[@id="' + element.id + '"]';
+    const name = element.getAttribute('name');
+    if (name) return '//' + tag + '[@name="' + name + '"]';
+    const testId = element.getAttribute('data-testid');
+    if (testId) return '//' + tag + '[@data-testid="' + testId + '"]';
+    
+    if (element.className && typeof element.className === 'string') {
+      const classVal = element.className.trim();
+      if (classVal) return '//' + tag + '[@class="' + classVal + '"]';
+    }
+    const textContent = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
+    if (textContent) {
+      if (textContent.length <= 40) return `//${tag}[text()="${textContent}"]`;
+      else return `//${tag}[contains(text(), "${textContent.substring(0, 20)}")]`;
+    }
+    if (element === document.body) return '/html/body';
+    
+    let ix = 0;
+    const siblings = element.parentNode ? element.parentNode.childNodes : [];
+    for (let i = 0; i < siblings.length; i++) {
+      const sibling = siblings[i];
+      if (sibling === element) return getXPath(element.parentNode) + '/' + tag + '[' + (ix + 1) + ']';
+      if (sibling.nodeType === 1 && sibling.tagName === element.tagName) ix++;
+    }
+    return '';
+  }
+
+  const results = [];
+  const patterns = [
+    { label: 'data-testid Element', selector: '[data-testid]' },
+    { label: 'Username / Email', selector: 'input[type="email"], input[name*="user" i], input[id*="user" i], input[name*="login" i]' },
+    { label: 'Password Input', selector: 'input[type="password"]' },
+    { label: 'Search Input', selector: 'input[type="search"], input[name*="search" i]' },
+    { label: 'Submit Button', selector: 'button[type="submit"], input[type="submit"]' },
+    { label: 'Generic Button', selector: 'button:not([type="submit"])' },
+    { label: 'Text Input', selector: 'input[type="text"]' },
+    { label: 'Link (href)', selector: '[href]' }
+  ];
+
+  const seen = new Set();
+  patterns.forEach(p => {
+    const elements = document.querySelectorAll(p.selector);
+    elements.forEach(el => {
+      if (seen.has(el)) return;
+      seen.add(el);
+      
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      let displayLabel = p.label;
+      const testId = el.getAttribute('data-testid');
+      const href = el.getAttribute('href');
+      const name = el.getAttribute('name');
+      const id = el.id;
+
+      if (testId) {
+        displayLabel = `data-testid="${testId}" (${el.tagName.toLowerCase()})`;
+      } else if (href) {
+        const displayHref = href.length > 30 ? href.substring(0, 27) + '...' : href;
+        displayLabel = `Link [href="${displayHref}"]`;
+      } else if (name) {
+        displayLabel += ` (${name})`;
+      } else if (id) {
+        displayLabel += ` (#${id})`;
+      }
+      
+      results.push({
+        label: displayLabel,
+        css: getCssSelector(el),
+        xpath: getXPath(el)
+      });
+    });
+  });
+
+  return results.slice(0, 50);
+}
+
 const cssVal = document.getElementById('css-val');
 const xpathVal = document.getElementById('xpath-val');
 const cssWarning = document.getElementById('css-warning');
@@ -203,6 +333,11 @@ const iframeInfo = document.getElementById('iframe-info');
 
 const testInput = document.getElementById('test-input');
 const testBadge = document.getElementById('test-badge');
+
+const scanBtn = document.getElementById('scan-page-btn');
+const formatSelect = document.getElementById('locator-format');
+const scanResultsWrap = document.getElementById('scanner-results');
+const scannerSection = document.querySelector('.scanner-section');
 
 function setWarning(warningEl, locator, matchCount, locatorName, codeEl) {
   const isValid = locator && locator !== 'No element selected' && locator !== 'Select an element to inspect';
@@ -233,7 +368,6 @@ function updateSelectors() {
         setWarning(cssWarning, result.css, result.cssMatches, 'CSS', cssVal);
         setWarning(xpathWarning, result.xpath, result.xpathMatches, 'XPath', xpathVal);
 
-        // Update iFrame Banner
         if (result.inIFrame) {
           iframeBanner.hidden = false;
           iframeInfo.textContent = result.iframeInfo;
@@ -304,11 +438,16 @@ function runLiveTester() {
 
 testInput.addEventListener('input', runLiveTester);
 
-// Setup Copy Buttons
-function setupCopy(triggerEl, textGetter, feedbackBtn) {
+// --- Setup Copy Buttons ---
+function setupCopy(triggerEl, textGetter, feedbackBtn, typeGetter) {
   triggerEl.addEventListener('click', () => {
     const text = textGetter();
     if (!text || text === 'No element selected' || text === 'Select an element to inspect') return;
+    
+    if (typeGetter) {
+      selectInDevToolsElements(text, typeGetter());
+    }
+
     navigator.clipboard.writeText(text).then(() => {
       feedbackBtn.innerHTML = ICON_CHECK;
       setTimeout(() => {
@@ -318,10 +457,141 @@ function setupCopy(triggerEl, textGetter, feedbackBtn) {
   });
 }
 
-setupCopy(copyCssBtn, () => cssVal.textContent, copyCssBtn);
-setupCopy(cssVal, () => cssVal.textContent, copyCssBtn);
-setupCopy(copyXpathBtn, () => xpathVal.textContent, copyXpathBtn);
-setupCopy(xpathVal, () => xpathVal.textContent, copyXpathBtn);
+setupCopy(copyCssBtn, () => cssVal.textContent, copyCssBtn, () => 'css');
+setupCopy(cssVal, () => cssVal.textContent, copyCssBtn, () => 'css');
+setupCopy(copyXpathBtn, () => xpathVal.textContent, copyXpathBtn, () => 'xpath');
+setupCopy(xpathVal, () => xpathVal.textContent, copyXpathBtn, () => 'xpath');
 
 chrome.devtools.panels.elements.onSelectionChanged.addListener(updateSelectors);
 updateSelectors();
+
+// --- Page Ready State Polling & Navigation Observer ---
+let pollReadyInterval = null;
+
+function checkPageReadyState() {
+  chrome.devtools.inspectedWindow.eval(
+    `document.readyState === 'complete'`,
+    (isComplete, isException) => {
+      if (!isException && isComplete) {
+        scanBtn.disabled = false;
+        if (pollReadyInterval) {
+          clearInterval(pollReadyInterval);
+          pollReadyInterval = null;
+        }
+      } else {
+        scanBtn.disabled = true;
+        if (!pollReadyInterval) {
+          pollReadyInterval = setInterval(checkPageReadyState, 500);
+        }
+      }
+    }
+  );
+}
+
+function resetScannerState() {
+  scanBtn.disabled = true;
+  scanBtn.classList.remove('scanned');
+  scannerSection.classList.remove('scanned-active');
+  scannedLocatorsData = [];
+  scanResultsWrap.innerHTML = '<div class="empty-msg">Waiting for page to load completely...</div>';
+  checkPageReadyState();
+}
+
+// Reset button color to RGB(235, 103, 156) and disable on page refresh/navigation
+chrome.devtools.network.onNavigated.addListener(() => {
+  resetScannerState();
+});
+
+// Initial load check
+checkPageReadyState();
+
+// --- Page Scanner UI Event Handlers ---
+let scannedLocatorsData = [];
+
+function renderScannedLocators() {
+  if (!scannedLocatorsData || scannedLocatorsData.length === 0) {
+    scanResultsWrap.innerHTML = '<div class="empty-msg">No matching elements detected.</div>';
+    return;
+  }
+
+  scanResultsWrap.innerHTML = '';
+  const selectedFormat = formatSelect.value;
+
+  scannedLocatorsData.forEach(item => {
+    const locatorString = selectedFormat === 'xpath' ? item.xpath : item.css;
+
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'scan-item';
+
+    const header = document.createElement('div');
+    header.className = 'scan-item-header';
+    header.textContent = item.label;
+
+    const bodyWrap = document.createElement('div');
+    bodyWrap.className = 'scan-item-body';
+
+    const codeEl = document.createElement('code');
+    codeEl.className = 'scan-item-code';
+    codeEl.textContent = locatorString;
+    codeEl.title = 'Hover to highlight, click to copy & select in DOM';
+
+    const itemCopyBtn = document.createElement('button');
+    itemCopyBtn.className = 'scan-copy-btn';
+    itemCopyBtn.title = 'Copy Locator and Select in Elements Panel';
+    itemCopyBtn.innerHTML = ICON_COPY;
+
+    codeEl.addEventListener('mouseenter', () => triggerHighlight(() => locatorString, selectedFormat));
+    codeEl.addEventListener('mouseleave', removeHighlight);
+
+    const performCopyAndSelect = () => {
+      // 1. Select the element inside the DevTools Elements panel DOM tree
+      selectInDevToolsElements(locatorString, selectedFormat);
+
+      // 2. Copy the locator string to clipboard
+      navigator.clipboard.writeText(locatorString).then(() => {
+        itemCopyBtn.innerHTML = ICON_CHECK;
+        const originalText = codeEl.textContent;
+        codeEl.textContent = 'Copied & Selected!';
+        setTimeout(() => {
+          itemCopyBtn.innerHTML = ICON_COPY;
+          codeEl.textContent = originalText;
+        }, 1200);
+      });
+    };
+
+    codeEl.addEventListener('click', performCopyAndSelect);
+    itemCopyBtn.addEventListener('click', performCopyAndSelect);
+
+    bodyWrap.appendChild(codeEl);
+    bodyWrap.appendChild(itemCopyBtn);
+    itemDiv.appendChild(header);
+    itemDiv.appendChild(bodyWrap);
+
+    scanResultsWrap.appendChild(itemDiv);
+  });
+}
+
+formatSelect.addEventListener('change', renderScannedLocators);
+
+scanBtn.addEventListener('click', () => {
+  if (scanBtn.disabled) return;
+
+  scanBtn.textContent = 'Scanning...';
+  chrome.devtools.inspectedWindow.eval(
+    `(${scanPageElements.toString()})()`,
+    (results, isException) => {
+      scanBtn.textContent = '⚡ Scan Page';
+      if (isException) {
+        scanResultsWrap.innerHTML = '<div class="empty-msg">Error scanning the page.</div>';
+        return;
+      }
+
+      // Change button color to RGB(102, 237, 174) upon scan completion
+      scanBtn.classList.add('scanned');
+      scannerSection.classList.add('scanned-active');
+
+      scannedLocatorsData = results || [];
+      renderScannedLocators();
+    }
+  );
+});

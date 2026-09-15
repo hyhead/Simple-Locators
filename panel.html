@@ -52,10 +52,27 @@
       </div>
     </div>
 
+       <!-- Page Scanner (Middle & Featured) -->
+    <div class="section scanner-section">
+      <div class="header">
+        <span class="label scanner-label">Page Scanner</span>
+        <div class="scanner-controls">
+          <button id="scan-page-btn" class="scan-btn" disabled>⚡ Scan Page</button>
+          <select id="locator-format" class="format-select" title="Toggle Locator Format">
+            <option value="xpath" selected>XPath</option>
+            <option value="css">CSS</option>
+          </select>
+        </div>
+      </div>
+      <div id="scanner-results" class="scanner-results">
+        <div class="empty-msg">Click scan to find inputs, buttons, links, and data-testid elements.</div>
+      </div>
+    </div>
+
     <!-- Highlighted Footer Hint -->
     <div class="footer-hint">
       <span class="hint-icon">💡</span>
-      <span>Click to copy • Hover locator box to highlight on page</span>
+      <span>Click to copy & inspect • Hover locator box to highlight on page</span>
     </div>
   </div>
   <script src="panel.js"></script>
