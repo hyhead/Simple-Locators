@@ -29,14 +29,8 @@ Simple Locators is a Chrome DevTools extension that generates, tests, scans, and
 
 ## How Selectors are Generated
 
-The locator generation algorithm prioritizes stable attributes:
-1. Unique `id`
-2. `name` attribute
-3. `data-testid` attribute
-4. Class names
-5. Structural hierarchy and sibling position (`:nth-of-type` fallback)
-
-XPath expressions also leverage exact or partial text content for elements containing text.
+- **CSS Selectors**: Prioritizes stable attributes (`id`, `name`, `data-testid`, class names) before falling back to structural hierarchy (`:nth-of-type`).
+- **XPath Expressions**: Evaluates all available attributes on the element and automatically selects the attribute that produces the shortest overall XPath expression. If no attributes are available, it falls back to text content matching or parent-child hierarchy paths.
 
 ## Limitations
 

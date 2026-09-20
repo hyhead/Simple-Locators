@@ -84,17 +84,49 @@ function inspectElement(el) {
   function getXPath(element) {
     const tag = element.tagName.toLowerCase();
 
-    if (element.id) return '//*[@id="' + element.id + '"]';
+    if (element.attributes && element.attributes.length > 0) {
+      let shortestUniqueXPath = null;
+      let shortestAnyXPath = null;
 
-    const name = element.getAttribute('name');
-    if (name) return '//' + tag + '[@name="' + name + '"]';
+      for (let i = 0; i < element.attributes.length; i++) {
+        const attr = element.attributes[i];
+        const attrName = attr.name;
+        const attrVal = attr.value;
 
-    const testId = element.getAttribute('data-testid');
-    if (testId) return '//' + tag + '[@data-testid="' + testId + '"]';
+        if (attrName === 'class' && !attrVal.trim()) continue;
 
-    if (element.className && typeof element.className === 'string') {
-      const classVal = element.className.trim();
-      if (classVal) return '//' + tag + '[@class="' + classVal + '"]';
+        let candidateXPath = '';
+        const quote = attrVal.includes('"') ? "'" : '"';
+
+        if (attrName === 'id' && attrVal) {
+          candidateXPath = `//*[@id=${quote}${attrVal}${quote}]`;
+        } else if (attrVal === '') {
+          candidateXPath = `//${tag}[@${attrName}]`;
+        } else {
+          candidateXPath = `//${tag}[@${attrName}=${quote}${attrVal}${quote}]`;
+        }
+
+        let matchCount = 0;
+        try {
+          const res = document.evaluate(candidateXPath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          matchCount = res.snapshotLength;
+        } catch (e) {
+          matchCount = 0;
+        }
+
+        if (matchCount === 1) {
+          if (!shortestUniqueXPath || candidateXPath.length < shortestUniqueXPath.length) {
+            shortestUniqueXPath = candidateXPath;
+          }
+        }
+
+        if (!shortestAnyXPath || candidateXPath.length < shortestAnyXPath.length) {
+          shortestAnyXPath = candidateXPath;
+        }
+      }
+
+      if (shortestUniqueXPath) return shortestUniqueXPath;
+      if (shortestAnyXPath) return shortestAnyXPath;
     }
 
     const textContent = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
@@ -259,23 +291,59 @@ function scanPageElements() {
 
   function getXPath(element) {
     const tag = element.tagName.toLowerCase();
-    if (element.id) return '//*[@id="' + element.id + '"]';
-    const name = element.getAttribute('name');
-    if (name) return '//' + tag + '[@name="' + name + '"]';
-    const testId = element.getAttribute('data-testid');
-    if (testId) return '//' + tag + '[@data-testid="' + testId + '"]';
-    
-    if (element.className && typeof element.className === 'string') {
-      const classVal = element.className.trim();
-      if (classVal) return '//' + tag + '[@class="' + classVal + '"]';
+
+    if (element.attributes && element.attributes.length > 0) {
+      let shortestUniqueXPath = null;
+      let shortestAnyXPath = null;
+
+      for (let i = 0; i < element.attributes.length; i++) {
+        const attr = element.attributes[i];
+        const attrName = attr.name;
+        const attrVal = attr.value;
+
+        if (attrName === 'class' && !attrVal.trim()) continue;
+
+        let candidateXPath = '';
+        const quote = attrVal.includes('"') ? "'" : '"';
+
+        if (attrName === 'id' && attrVal) {
+          candidateXPath = `//*[@id=${quote}${attrVal}${quote}]`;
+        } else if (attrVal === '') {
+          candidateXPath = `//${tag}[@${attrName}]`;
+        } else {
+          candidateXPath = `//${tag}[@${attrName}=${quote}${attrVal}${quote}]`;
+        }
+
+        let matchCount = 0;
+        try {
+          const res = document.evaluate(candidateXPath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          matchCount = res.snapshotLength;
+        } catch (e) {
+          matchCount = 0;
+        }
+
+        if (matchCount === 1) {
+          if (!shortestUniqueXPath || candidateXPath.length < shortestUniqueXPath.length) {
+            shortestUniqueXPath = candidateXPath;
+          }
+        }
+
+        if (!shortestAnyXPath || candidateXPath.length < shortestAnyXPath.length) {
+          shortestAnyXPath = candidateXPath;
+        }
+      }
+
+      if (shortestUniqueXPath) return shortestUniqueXPath;
+      if (shortestAnyXPath) return shortestAnyXPath;
     }
+
     const textContent = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
     if (textContent) {
       if (textContent.length <= 40) return `//${tag}[text()="${textContent}"]`;
       else return `//${tag}[contains(text(), "${textContent.substring(0, 20)}")]`;
     }
     if (element === document.body) return '/html/body';
-    
+
     let ix = 0;
     const siblings = element.parentNode ? element.parentNode.childNodes : [];
     for (let i = 0; i < siblings.length; i++) {
