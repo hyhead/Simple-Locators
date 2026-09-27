@@ -39,34 +39,53 @@ function inspectElement(el) {
   }
 
   function getCssSelector(element) {
+    if (!element || element.nodeType !== 1) return '';
     const path = [];
     let curr = element;
+
     while (curr && curr.nodeType === 1) {
       const tag = curr.nodeName.toLowerCase();
-      
-      if (curr.id) {
-        path.unshift('#' + CSS.escape(curr.id));
-        break;
-      }
-      
-      const name = curr.getAttribute('name');
-      if (name) {
-        path.unshift(tag + '[name="' + CSS.escape(name) + '"]');
-        break;
+
+      if (curr.id && curr.id.trim()) {
+        const idSel = '#' + CSS.escape(curr.id.trim());
+        const testPath = [idSel, ...path].join(' > ');
+        if (countMatchingElements(testPath, 'css') === 1) return testPath;
       }
 
       const testId = curr.getAttribute('data-testid');
-      if (testId) {
-        path.unshift(tag + '[data-testid="' + CSS.escape(testId) + '"]');
-        break;
+      if (testId && testId.trim()) {
+        const testIdSel = tag + '[data-testid="' + CSS.escape(testId.trim()) + '"]';
+        const testPath = [testIdSel, ...path].join(' > ');
+        if (countMatchingElements(testPath, 'css') === 1) return testPath;
+      }
+
+      const name = curr.getAttribute('name');
+      if (name && name.trim()) {
+        const nameSel = tag + '[name="' + CSS.escape(name.trim()) + '"]';
+        const testPath = [nameSel, ...path].join(' > ');
+        if (countMatchingElements(testPath, 'css') === 1) return testPath;
+      }
+
+      const val = curr.getAttribute('value');
+      if (val && val.trim()) {
+        const valSel = tag + '[value="' + CSS.escape(val.trim()) + '"]';
+        const testPath = [valSel, ...path].join(' > ');
+        if (countMatchingElements(testPath, 'css') === 1) return testPath;
+      }
+
+      const typeAttr = curr.getAttribute('type');
+      if (typeAttr && typeAttr.trim()) {
+        const typeSel = tag + '[type="' + CSS.escape(typeAttr.trim()) + '"]';
+        const testPath = [typeSel, ...path].join(' > ');
+        if (countMatchingElements(testPath, 'css') === 1) return testPath;
       }
 
       if (curr.className && typeof curr.className === 'string') {
         const classes = curr.className.trim().split(/\s+/).filter(Boolean);
         if (classes.length > 0) {
           const classSelector = tag + '.' + classes.map(c => CSS.escape(c)).join('.');
-          path.unshift(classSelector);
-          break;
+          const testPath = [classSelector, ...path].join(' > ');
+          if (countMatchingElements(testPath, 'css') === 1) return testPath;
         }
       }
 
@@ -75,86 +94,126 @@ function inspectElement(el) {
       while ((sibling = sibling.previousElementSibling)) {
         if (sibling.nodeName.toLowerCase() === tag) nth++;
       }
-      path.unshift(nth !== 1 ? `${tag}:nth-of-type(${nth})` : tag);
+      const nthSel = nth !== 1 ? `${tag}:nth-of-type(${nth})` : tag;
+      path.unshift(nthSel);
+
+      const currentFullPath = path.join(' > ');
+      if (countMatchingElements(currentFullPath, 'css') === 1) {
+        return currentFullPath;
+      }
+
       curr = curr.parentElement;
     }
+
     return path.join(' > ');
   }
 
   function getXPath(element) {
+    if (!element || element.nodeType !== 1) return '';
     const tag = element.tagName.toLowerCase();
 
-    if (element.attributes && element.attributes.length > 0) {
-      let shortestUniqueXPath = null;
-      let shortestAnyXPath = null;
-      let shortestUniqueClassXPath = null;
-      let shortestAnyClassXPath = null;
+    if (element.id && element.id.trim()) {
+      const idVal = element.id.trim();
+      const quote = idVal.includes('"') ? "'" : '"';
+      const idXPath = `//*[@id=${quote}${idVal}${quote}]`;
+      if (countMatchingElements(idXPath, 'xpath') === 1) return idXPath;
+    }
 
-      for (let i = 0; i < element.attributes.length; i++) {
-        const attr = element.attributes[i];
-        const attrName = attr.name;
-        const attrVal = attr.value;
+    const testId = element.getAttribute('data-testid');
+    if (testId && testId.trim()) {
+      const quote = testId.includes('"') ? "'" : '"';
+      const testIdXPath = `//${tag}[@data-testid=${quote}${testId.trim()}${quote}]`;
+      if (countMatchingElements(testIdXPath, 'xpath') === 1) return testIdXPath;
+    }
 
-        if (attrName === 'class' && !attrVal.trim()) continue;
+    const priorityAttrs = ['name', 'value', 'placeholder', 'aria-label', 'title', 'alt', 'type', 'role', 'class'];
+    let candidateAttrXPaths = [];
 
-        let candidateXPath = '';
+    for (const attrName of priorityAttrs) {
+      const attrVal = element.getAttribute(attrName);
+      if (attrVal !== null && attrVal !== undefined && attrVal.trim() !== '') {
         const quote = attrVal.includes('"') ? "'" : '"';
-
-        if (attrName === 'id' && attrVal) {
-          candidateXPath = `//*[@id=${quote}${attrVal}${quote}]`;
-        } else if (attrVal === '') {
-          candidateXPath = `//${tag}[@${attrName}]`;
-        } else {
-          candidateXPath = `//${tag}[@${attrName}=${quote}${attrVal}${quote}]`;
-        }
-
-        let matchCount = 0;
-        try {
-          const res = document.evaluate(candidateXPath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-          matchCount = res.snapshotLength;
-        } catch (e) {
-          matchCount = 0;
-        }
-
-        if (attrName === 'class') {
-          if (matchCount === 1) {
-            if (!shortestUniqueClassXPath || candidateXPath.length < shortestUniqueClassXPath.length) {
-              shortestUniqueClassXPath = candidateXPath;
-            }
-          }
-          if (!shortestAnyClassXPath || candidateXPath.length < shortestAnyClassXPath.length) {
-            shortestAnyClassXPath = candidateXPath;
-          }
-        } else {
-          if (matchCount === 1) {
-            if (!shortestUniqueXPath || candidateXPath.length < shortestUniqueXPath.length) {
-              shortestUniqueXPath = candidateXPath;
-            }
-          }
-          if (!shortestAnyXPath || candidateXPath.length < shortestAnyXPath.length) {
-            shortestAnyXPath = candidateXPath;
-          }
+        const attrXPath = `//${tag}[@${attrName}=${quote}${attrVal}${quote}]`;
+        const matches = countMatchingElements(attrXPath, 'xpath');
+        if (matches === 1) {
+          return attrXPath;
+        } else if (matches > 1) {
+          candidateAttrXPaths.push({ xpath: attrXPath, count: matches });
         }
       }
-
-      if (shortestUniqueXPath) return shortestUniqueXPath;
-      if (shortestUniqueClassXPath) return shortestUniqueClassXPath;
-      if (shortestAnyXPath) return shortestAnyXPath;
-      if (shortestAnyClassXPath) return shortestAnyClassXPath;
     }
 
     const textContent = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
     if (textContent) {
+      const quote = textContent.includes('"') ? "'" : '"';
+      let textXPath = '';
       if (textContent.length <= 40) {
-        return `//${tag}[text()="${textContent}"]`;
+        textXPath = `//${tag}[text()=${quote}${textContent}${quote}]`;
       } else {
-        const partialText = textContent.substring(0, 20);
-        return `//${tag}[contains(text(), "${partialText}")]`;
+        const partial = textContent.substring(0, 20);
+        const partQuote = partial.includes('"') ? "'" : '"';
+        textXPath = `//${tag}[contains(text(), ${partQuote}${partial}${partQuote})]`;
+      }
+      const matches = countMatchingElements(textXPath, 'xpath');
+      if (matches === 1) return textXPath;
+      if (matches > 1) {
+        candidateAttrXPaths.push({ xpath: textXPath, count: matches });
       }
     }
 
-    if (element === document.body) return '/html/body';
+    if (element.attributes && element.attributes.length > 0) {
+      let combinedPredicates = [];
+      for (let i = 0; i < element.attributes.length; i++) {
+        const a = element.attributes[i];
+        if (a.name === 'class' && !a.value.trim()) continue;
+        if (a.value) {
+          const quote = a.value.includes('"') ? "'" : '"';
+          combinedPredicates.push(`@${a.name}=${quote}${a.value}${quote}`);
+        }
+      }
+      if (combinedPredicates.length > 1) {
+        const combinedXPath = `//${tag}[${combinedPredicates.join(' and ')}]`;
+        if (countMatchingElements(combinedXPath, 'xpath') === 1) return combinedXPath;
+      }
+    }
 
+    let baseXPath = candidateAttrXPaths.length > 0 ? candidateAttrXPaths[0].xpath : `//${tag}`;
+
+    let parent = element.parentElement;
+    while (parent && parent !== document.documentElement && parent !== document.body) {
+      const parentTag = parent.tagName.toLowerCase();
+      if (parent.id && parent.id.trim()) {
+        const quote = parent.id.includes('"') ? "'" : '"';
+        const parentPath = `//*[@id=${quote}${parent.id.trim()}${quote}]//${baseXPath.replace(/^\/\//, '')}`;
+        if (countMatchingElements(parentPath, 'xpath') === 1) return parentPath;
+        break;
+      }
+      const parentName = parent.getAttribute('name');
+      if (parentName) {
+        const quote = parentName.includes('"') ? "'" : '"';
+        const parentPath = `//${parentTag}[@name=${quote}${parentName}${quote}]//${baseXPath.replace(/^\/\//, '')}`;
+        if (countMatchingElements(parentPath, 'xpath') === 1) return parentPath;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+
+    try {
+      const baseMatches = document.evaluate(baseXPath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      let elementIndex = -1;
+      for (let i = 0; i < baseMatches.snapshotLength; i++) {
+        if (baseMatches.snapshotItem(i) === element) {
+          elementIndex = i + 1;
+          break;
+        }
+      }
+      if (elementIndex > 0) {
+        const indexedXPath = `(${baseXPath})[${elementIndex}]`;
+        if (countMatchingElements(indexedXPath, 'xpath') === 1) return indexedXPath;
+      }
+    } catch (e) {}
+
+    if (element === document.body) return '/html/body';
     let ix = 0;
     const siblings = element.parentNode ? element.parentNode.childNodes : [];
     for (let i = 0; i < siblings.length; i++) {
@@ -166,11 +225,45 @@ function inspectElement(el) {
         ix++;
       }
     }
-    return '';
+    return baseXPath;
   }
 
-  const css = getCssSelector(el);
-  const xpath = getXPath(el);
+  let css = getCssSelector(el);
+  let xpath = getXPath(el);
+
+  if (countMatchingElements(xpath, 'xpath') > 1) {
+    try {
+      const res = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      for (let i = 0; i < res.snapshotLength; i++) {
+        if (res.snapshotItem(i) === el) {
+          xpath = `(${xpath})[${i + 1}]`;
+          break;
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (countMatchingElements(css, 'css') > 1) {
+    try {
+      let path = [];
+      let curr = el;
+      while (curr && curr.nodeType === 1) {
+        const tag = curr.nodeName.toLowerCase();
+        let sibling = curr;
+        let nth = 1;
+        while ((sibling = sibling.previousElementSibling)) {
+          if (sibling.nodeName.toLowerCase() === tag) nth++;
+        }
+        path.unshift(`${tag}:nth-of-type(${nth})`);
+        const testSel = path.join(' > ');
+        if (countMatchingElements(testSel, 'css') === 1) {
+          css = testSel;
+          break;
+        }
+        curr = curr.parentElement;
+      }
+    } catch (e) {}
+  }
 
   return {
     css: css,
@@ -264,120 +357,211 @@ function selectInDevToolsElements(locator, type) {
 
 // --- Page Scanner Logic (Evaluated on Inspected Page) ---
 function scanPageElements() {
+  function countXPathMatches(xpath) {
+    try {
+      const res = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      return res.snapshotLength;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function countCssMatches(sel) {
+    try {
+      return document.querySelectorAll(sel).length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
   function getCssSelector(element) {
+    if (!element || element.nodeType !== 1) return '';
     const path = [];
     let curr = element;
+
     while (curr && curr.nodeType === 1) {
       const tag = curr.nodeName.toLowerCase();
-      if (curr.id) {
-        path.unshift('#' + CSS.escape(curr.id));
-        break;
+
+      if (curr.id && curr.id.trim()) {
+        const idSel = '#' + CSS.escape(curr.id.trim());
+        const testPath = [idSel, ...path].join(' > ');
+        if (countCssMatches(testPath) === 1) return testPath;
       }
-      const name = curr.getAttribute('name');
-      if (name) {
-        path.unshift(tag + '[name="' + CSS.escape(name) + '"]');
-        break;
-      }
+
       const testId = curr.getAttribute('data-testid');
-      if (testId) {
-        path.unshift(tag + '[data-testid="' + CSS.escape(testId) + '"]');
-        break;
+      if (testId && testId.trim()) {
+        const testIdSel = tag + '[data-testid="' + CSS.escape(testId.trim()) + '"]';
+        const testPath = [testIdSel, ...path].join(' > ');
+        if (countCssMatches(testPath) === 1) return testPath;
       }
+
+      const name = curr.getAttribute('name');
+      if (name && name.trim()) {
+        const nameSel = tag + '[name="' + CSS.escape(name.trim()) + '"]';
+        const testPath = [nameSel, ...path].join(' > ');
+        if (countCssMatches(testPath) === 1) return testPath;
+      }
+
+      const val = curr.getAttribute('value');
+      if (val && val.trim()) {
+        const valSel = tag + '[value="' + CSS.escape(val.trim()) + '"]';
+        const testPath = [valSel, ...path].join(' > ');
+        if (countCssMatches(testPath) === 1) return testPath;
+      }
+
+      const typeAttr = curr.getAttribute('type');
+      if (typeAttr && typeAttr.trim()) {
+        const typeSel = tag + '[type="' + CSS.escape(typeAttr.trim()) + '"]';
+        const testPath = [typeSel, ...path].join(' > ');
+        if (countCssMatches(testPath) === 1) return testPath;
+      }
+
       if (curr.className && typeof curr.className === 'string') {
         const classes = curr.className.trim().split(/\s+/).filter(Boolean);
         if (classes.length > 0) {
-          path.unshift(tag + '.' + classes.map(c => CSS.escape(c)).join('.'));
-          break;
+          const classSelector = tag + '.' + classes.map(c => CSS.escape(c)).join('.');
+          const testPath = [classSelector, ...path].join(' > ');
+          if (countCssMatches(testPath) === 1) return testPath;
         }
       }
+
       let sibling = curr;
       let nth = 1;
       while ((sibling = sibling.previousElementSibling)) {
         if (sibling.nodeName.toLowerCase() === tag) nth++;
       }
-      path.unshift(nth !== 1 ? `${tag}:nth-of-type(${nth})` : tag);
+      const nthSel = nth !== 1 ? `${tag}:nth-of-type(${nth})` : tag;
+      path.unshift(nthSel);
+
+      const currentFullPath = path.join(' > ');
+      if (countCssMatches(currentFullPath) === 1) {
+        return currentFullPath;
+      }
+
       curr = curr.parentElement;
     }
+
     return path.join(' > ');
   }
 
   function getXPath(element) {
+    if (!element || element.nodeType !== 1) return '';
     const tag = element.tagName.toLowerCase();
 
-    if (element.attributes && element.attributes.length > 0) {
-      let shortestUniqueXPath = null;
-      let shortestAnyXPath = null;
-      let shortestUniqueClassXPath = null;
-      let shortestAnyClassXPath = null;
+    if (element.id && element.id.trim()) {
+      const idVal = element.id.trim();
+      const quote = idVal.includes('"') ? "'" : '"';
+      const idXPath = `//*[@id=${quote}${idVal}${quote}]`;
+      if (countXPathMatches(idXPath) === 1) return idXPath;
+    }
 
-      for (let i = 0; i < element.attributes.length; i++) {
-        const attr = element.attributes[i];
-        const attrName = attr.name;
-        const attrVal = attr.value;
+    const testId = element.getAttribute('data-testid');
+    if (testId && testId.trim()) {
+      const quote = testId.includes('"') ? "'" : '"';
+      const testIdXPath = `//${tag}[@data-testid=${quote}${testId.trim()}${quote}]`;
+      if (countXPathMatches(testIdXPath) === 1) return testIdXPath;
+    }
 
-        if (attrName === 'class' && !attrVal.trim()) continue;
+    const priorityAttrs = ['name', 'value', 'placeholder', 'aria-label', 'title', 'alt', 'type', 'role', 'class'];
+    let candidateAttrXPaths = [];
 
-        let candidateXPath = '';
+    for (const attrName of priorityAttrs) {
+      const attrVal = element.getAttribute(attrName);
+      if (attrVal !== null && attrVal !== undefined && attrVal.trim() !== '') {
         const quote = attrVal.includes('"') ? "'" : '"';
-
-        if (attrName === 'id' && attrVal) {
-          candidateXPath = `//*[@id=${quote}${attrVal}${quote}]`;
-        } else if (attrVal === '') {
-          candidateXPath = `//${tag}[@${attrName}]`;
-        } else {
-          candidateXPath = `//${tag}[@${attrName}=${quote}${attrVal}${quote}]`;
-        }
-
-        let matchCount = 0;
-        try {
-          const res = document.evaluate(candidateXPath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-          matchCount = res.snapshotLength;
-        } catch (e) {
-          matchCount = 0;
-        }
-
-        if (attrName === 'class') {
-          if (matchCount === 1) {
-            if (!shortestUniqueClassXPath || candidateXPath.length < shortestUniqueClassXPath.length) {
-              shortestUniqueClassXPath = candidateXPath;
-            }
-          }
-          if (!shortestAnyClassXPath || candidateXPath.length < shortestAnyClassXPath.length) {
-            shortestAnyClassXPath = candidateXPath;
-          }
-        } else {
-          if (matchCount === 1) {
-            if (!shortestUniqueXPath || candidateXPath.length < shortestUniqueXPath.length) {
-              shortestUniqueXPath = candidateXPath;
-            }
-          }
-          if (!shortestAnyXPath || candidateXPath.length < shortestAnyXPath.length) {
-            shortestAnyXPath = candidateXPath;
-          }
+        const attrXPath = `//${tag}[@${attrName}=${quote}${attrVal}${quote}]`;
+        const matches = countXPathMatches(attrXPath);
+        if (matches === 1) {
+          return attrXPath;
+        } else if (matches > 1) {
+          candidateAttrXPaths.push({ xpath: attrXPath, count: matches });
         }
       }
-
-      if (shortestUniqueXPath) return shortestUniqueXPath;
-      if (shortestUniqueClassXPath) return shortestUniqueClassXPath;
-      if (shortestAnyXPath) return shortestAnyXPath;
-      if (shortestAnyClassXPath) return shortestAnyClassXPath;
     }
 
     const textContent = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
     if (textContent) {
-      if (textContent.length <= 40) return `//${tag}[text()="${textContent}"]`;
-      else return `//${tag}[contains(text(), "${textContent.substring(0, 20)}")]`;
+      const quote = textContent.includes('"') ? "'" : '"';
+      let textXPath = '';
+      if (textContent.length <= 40) {
+        textXPath = `//${tag}[text()=${quote}${textContent}${quote}]`;
+      } else {
+        const partial = textContent.substring(0, 20);
+        const partQuote = partial.includes('"') ? "'" : '"';
+        textXPath = `//${tag}[contains(text(), ${partQuote}${partial}${partQuote})]`;
+      }
+      const matches = countXPathMatches(textXPath);
+      if (matches === 1) return textXPath;
+      if (matches > 1) {
+        candidateAttrXPaths.push({ xpath: textXPath, count: matches });
+      }
     }
-    if (element === document.body) return '/html/body';
 
+    if (element.attributes && element.attributes.length > 0) {
+      let combinedPredicates = [];
+      for (let i = 0; i < element.attributes.length; i++) {
+        const a = element.attributes[i];
+        if (a.name === 'class' && !a.value.trim()) continue;
+        if (a.value) {
+          const quote = a.value.includes('"') ? "'" : '"';
+          combinedPredicates.push(`@${a.name}=${quote}${a.value}${quote}`);
+        }
+      }
+      if (combinedPredicates.length > 1) {
+        const combinedXPath = `//${tag}[${combinedPredicates.join(' and ')}]`;
+        if (countXPathMatches(combinedXPath) === 1) return combinedXPath;
+      }
+    }
+
+    let baseXPath = candidateAttrXPaths.length > 0 ? candidateAttrXPaths[0].xpath : `//${tag}`;
+
+    let parent = element.parentElement;
+    while (parent && parent !== document.documentElement && parent !== document.body) {
+      const parentTag = parent.tagName.toLowerCase();
+      if (parent.id && parent.id.trim()) {
+        const quote = parent.id.includes('"') ? "'" : '"';
+        const parentPath = `//*[@id=${quote}${parent.id.trim()}${quote}]//${baseXPath.replace(/^\/\//, '')}`;
+        if (countXPathMatches(parentPath) === 1) return parentPath;
+        break;
+      }
+      const parentName = parent.getAttribute('name');
+      if (parentName) {
+        const quote = parentName.includes('"') ? "'" : '"';
+        const parentPath = `//${parentTag}[@name=${quote}${parentName}${quote}]//${baseXPath.replace(/^\/\//, '')}`;
+        if (countXPathMatches(parentPath) === 1) return parentPath;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+
+    try {
+      const baseMatches = document.evaluate(baseXPath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      let elementIndex = -1;
+      for (let i = 0; i < baseMatches.snapshotLength; i++) {
+        if (baseMatches.snapshotItem(i) === element) {
+          elementIndex = i + 1;
+          break;
+        }
+      }
+      if (elementIndex > 0) {
+        const indexedXPath = `(${baseXPath})[${elementIndex}]`;
+        if (countXPathMatches(indexedXPath) === 1) return indexedXPath;
+      }
+    } catch (e) {}
+
+    if (element === document.body) return '/html/body';
     let ix = 0;
     const siblings = element.parentNode ? element.parentNode.childNodes : [];
     for (let i = 0; i < siblings.length; i++) {
       const sibling = siblings[i];
-      if (sibling === element) return getXPath(element.parentNode) + '/' + tag + '[' + (ix + 1) + ']';
-      if (sibling.nodeType === 1 && sibling.tagName === element.tagName) ix++;
+      if (sibling === element) {
+        return getXPath(element.parentNode) + '/' + tag + '[' + (ix + 1) + ']';
+      }
+      if (sibling.nodeType === 1 && sibling.tagName === element.tagName) {
+        ix++;
+      }
     }
-    return '';
+    return baseXPath;
   }
 
   function getRawText(element) {
@@ -451,13 +635,51 @@ function scanPageElements() {
       } else if (id) {
         displayLabel += ` (#${id})`;
       }
+
+      let cssLoc = getCssSelector(el);
+      let xpathLoc = getXPath(el);
+
+      // Verify uniqueness check in page scanner: if returned locator fetches multiple elements, update accordingly
+      if (countXPathMatches(xpathLoc) > 1) {
+        try {
+          const res = document.evaluate(xpathLoc, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          for (let i = 0; i < res.snapshotLength; i++) {
+            if (res.snapshotItem(i) === el) {
+              xpathLoc = `(${xpathLoc})[${i + 1}]`;
+              break;
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (countCssMatches(cssLoc) > 1) {
+        try {
+          let path = [];
+          let curr = el;
+          while (curr && curr.nodeType === 1) {
+            const tag = curr.nodeName.toLowerCase();
+            let sibling = curr;
+            let nth = 1;
+            while ((sibling = sibling.previousElementSibling)) {
+              if (sibling.nodeName.toLowerCase() === tag) nth++;
+            }
+            path.unshift(`${tag}:nth-of-type(${nth})`);
+            const testSel = path.join(' > ');
+            if (countCssMatches(testSel) === 1) {
+              cssLoc = testSel;
+              break;
+            }
+            curr = curr.parentElement;
+          }
+        } catch (e) {}
+      }
       
       results.push({
         label: displayLabel,
         rawText: getRawText(el) || displayLabel,
         type: getElementType(el),
-        css: getCssSelector(el),
-        xpath: getXPath(el)
+        css: cssLoc,
+        xpath: xpathLoc
       });
     });
   });
