@@ -30,7 +30,7 @@ Simple Locators is a Chrome DevTools extension that generates, tests, scans, and
 ## How Selectors are Generated
 
 - **CSS Selectors**: Prioritizes stable attributes (`id`, `name`, `data-testid`, class names) before falling back to structural hierarchy (`:nth-of-type`).
-- **XPath Expressions**: Evaluates all available attributes on the element and automatically selects the attribute that produces the shortest overall XPath expression. If no attributes are available, it falls back to text content matching or parent-child hierarchy paths.
+- **XPath Expressions**: Evaluates all available attributes on the element, prioritizing non-class attributes first to select the shortest unique candidate. The `class` attribute is explicitly assigned the lowest priority (even if its value is shorter in length). If no attribute yields a match, it falls back to text content matching or parent-child hierarchy paths.
 
 ## Limitations
 

@@ -87,6 +87,8 @@ function inspectElement(el) {
     if (element.attributes && element.attributes.length > 0) {
       let shortestUniqueXPath = null;
       let shortestAnyXPath = null;
+      let shortestUniqueClassXPath = null;
+      let shortestAnyClassXPath = null;
 
       for (let i = 0; i < element.attributes.length; i++) {
         const attr = element.attributes[i];
@@ -114,19 +116,31 @@ function inspectElement(el) {
           matchCount = 0;
         }
 
-        if (matchCount === 1) {
-          if (!shortestUniqueXPath || candidateXPath.length < shortestUniqueXPath.length) {
-            shortestUniqueXPath = candidateXPath;
+        if (attrName === 'class') {
+          if (matchCount === 1) {
+            if (!shortestUniqueClassXPath || candidateXPath.length < shortestUniqueClassXPath.length) {
+              shortestUniqueClassXPath = candidateXPath;
+            }
           }
-        }
-
-        if (!shortestAnyXPath || candidateXPath.length < shortestAnyXPath.length) {
-          shortestAnyXPath = candidateXPath;
+          if (!shortestAnyClassXPath || candidateXPath.length < shortestAnyClassXPath.length) {
+            shortestAnyClassXPath = candidateXPath;
+          }
+        } else {
+          if (matchCount === 1) {
+            if (!shortestUniqueXPath || candidateXPath.length < shortestUniqueXPath.length) {
+              shortestUniqueXPath = candidateXPath;
+            }
+          }
+          if (!shortestAnyXPath || candidateXPath.length < shortestAnyXPath.length) {
+            shortestAnyXPath = candidateXPath;
+          }
         }
       }
 
       if (shortestUniqueXPath) return shortestUniqueXPath;
+      if (shortestUniqueClassXPath) return shortestUniqueClassXPath;
       if (shortestAnyXPath) return shortestAnyXPath;
+      if (shortestAnyClassXPath) return shortestAnyClassXPath;
     }
 
     const textContent = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
@@ -168,7 +182,7 @@ function inspectElement(el) {
   };
 }
 
-// Injected into the target page to highlight matching elements
+// Injected into target page to highlight elements
 function highlightOnPage(selector, type) {
   const existing = document.querySelectorAll('.__simple_locators_overlay__');
   existing.forEach(el => el.remove());
@@ -223,7 +237,6 @@ function clearHighlightOnPage() {
   existing.forEach(el => el.remove());
 }
 
-// Safe evaluation wrapper to prevent uncaught runtime DevTools exceptions
 function safeEval(script, callback) {
   try {
     chrome.devtools.inspectedWindow.eval(script, (result, isException) => {
@@ -238,7 +251,6 @@ function safeEval(script, callback) {
   }
 }
 
-// Selects and focuses element inside DevTools Elements panel DOM
 function selectInDevToolsElements(locator, type) {
   if (!locator) return;
   let evalCode = '';
@@ -295,6 +307,8 @@ function scanPageElements() {
     if (element.attributes && element.attributes.length > 0) {
       let shortestUniqueXPath = null;
       let shortestAnyXPath = null;
+      let shortestUniqueClassXPath = null;
+      let shortestAnyClassXPath = null;
 
       for (let i = 0; i < element.attributes.length; i++) {
         const attr = element.attributes[i];
@@ -322,19 +336,31 @@ function scanPageElements() {
           matchCount = 0;
         }
 
-        if (matchCount === 1) {
-          if (!shortestUniqueXPath || candidateXPath.length < shortestUniqueXPath.length) {
-            shortestUniqueXPath = candidateXPath;
+        if (attrName === 'class') {
+          if (matchCount === 1) {
+            if (!shortestUniqueClassXPath || candidateXPath.length < shortestUniqueClassXPath.length) {
+              shortestUniqueClassXPath = candidateXPath;
+            }
           }
-        }
-
-        if (!shortestAnyXPath || candidateXPath.length < shortestAnyXPath.length) {
-          shortestAnyXPath = candidateXPath;
+          if (!shortestAnyClassXPath || candidateXPath.length < shortestAnyClassXPath.length) {
+            shortestAnyClassXPath = candidateXPath;
+          }
+        } else {
+          if (matchCount === 1) {
+            if (!shortestUniqueXPath || candidateXPath.length < shortestUniqueXPath.length) {
+              shortestUniqueXPath = candidateXPath;
+            }
+          }
+          if (!shortestAnyXPath || candidateXPath.length < shortestAnyXPath.length) {
+            shortestAnyXPath = candidateXPath;
+          }
         }
       }
 
       if (shortestUniqueXPath) return shortestUniqueXPath;
+      if (shortestUniqueClassXPath) return shortestUniqueClassXPath;
       if (shortestAnyXPath) return shortestAnyXPath;
+      if (shortestAnyClassXPath) return shortestAnyClassXPath;
     }
 
     const textContent = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
@@ -352,6 +378,39 @@ function scanPageElements() {
       if (sibling.nodeType === 1 && sibling.tagName === element.tagName) ix++;
     }
     return '';
+  }
+
+  function getRawText(element) {
+    const directText = element.textContent ? element.textContent.trim().replace(/\s+/g, ' ') : '';
+    if (directText && directText.length <= 40) return directText;
+    const value = element.value || element.getAttribute('placeholder') || element.getAttribute('aria-label') || element.id || element.name || '';
+    return value.trim();
+  }
+
+  // Detect element type for locator variable suffix
+  function getElementType(el) {
+    const tag = el.tagName.toLowerCase();
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    const id = (el.id || '').toLowerCase();
+    const className = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+
+    if (tag === 'select' || role === 'combobox' || id.includes('dropdown') || className.includes('dropdown')) {
+      return 'menu';
+    }
+    if (tag === 'button' || role === 'button') return 'button';
+    if (tag === 'a' || role === 'link') return 'link';
+    if (tag === 'textarea') return 'input';
+    if (tag === 'img') return 'image';
+    
+    if (tag === 'input') {
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      if (['submit', 'button', 'reset'].includes(type)) return 'button';
+      if (['checkbox'].includes(type)) return 'checkbox';
+      if (['radio'].includes(type)) return 'radio';
+      return 'input';
+    }
+
+    return tag || 'locator';
   }
 
   const results = [];
@@ -395,13 +454,18 @@ function scanPageElements() {
       
       results.push({
         label: displayLabel,
+        rawText: getRawText(el) || displayLabel,
+        type: getElementType(el),
         css: getCssSelector(el),
         xpath: getXPath(el)
       });
     });
   });
 
-  return results.slice(0, 50);
+  return {
+    title: document.title || 'ScannedPage',
+    items: results.slice(0, 50)
+  };
 }
 
 const cssVal = document.getElementById('css-val');
@@ -419,6 +483,8 @@ const testBadge = document.getElementById('test-badge');
 
 const scanBtn = document.getElementById('scan-page-btn');
 const formatSelect = document.getElementById('locator-format');
+const exportSelect = document.getElementById('export-format');
+const exportBtn = document.getElementById('export-btn');
 const scanResultsWrap = document.getElementById('scanner-results');
 const scannerSection = document.querySelector('.scanner-section');
 
@@ -550,7 +616,6 @@ updateSelectors();
 let pollReadyInterval = null;
 let currentInspectedUrl = '';
 
-// Checks for website link/URL changes (supports both standard and SPA routing)
 function checkUrlChange() {
   safeEval(
     `window.location.href`,
@@ -582,6 +647,7 @@ function checkPageReadyState() {
         }
       } else {
         scanBtn.disabled = true;
+        exportBtn.disabled = true;
         if (scannedLocatorsData.length === 0 && !scanBtn.classList.contains('scanned')) {
           scanResultsWrap.innerHTML = '<div class="empty-msg">Waiting for page to load completely...</div>';
         }
@@ -595,9 +661,11 @@ function checkPageReadyState() {
 
 function resetScannerState() {
   scanBtn.disabled = true;
+  exportBtn.disabled = true;
   scanBtn.classList.remove('scanned');
   scannerSection.classList.remove('scanned-active');
   scannedLocatorsData = [];
+  scannedPageTitle = '';
   scanResultsWrap.innerHTML = '<div class="empty-msg">Waiting for page to load completely...</div>';
 
   safeEval(`window.location.href`, (url) => {
@@ -607,24 +675,23 @@ function resetScannerState() {
   checkPageReadyState();
 }
 
-// Reset on full page refresh / top-level navigation
 chrome.devtools.network.onNavigated.addListener(() => {
   resetScannerState();
 });
 
-// Initial load check
 checkPageReadyState();
 checkUrlChange();
 
-// Periodically check for client-side link and URL changes safely
 setInterval(checkUrlChange, 1000);
 
-// --- Page Scanner UI Event Handlers ---
+// --- Page Scanner UI & Export Handlers ---
 let scannedLocatorsData = [];
+let scannedPageTitle = '';
 
 function renderScannedLocators() {
   if (!scannedLocatorsData || scannedLocatorsData.length === 0) {
     scanResultsWrap.innerHTML = '<div class="empty-msg">No matching elements detected.</div>';
+    exportBtn.disabled = true;
     return;
   }
 
@@ -681,9 +748,16 @@ function renderScannedLocators() {
 
     scanResultsWrap.appendChild(itemDiv);
   });
+
+  updateExportBtnState();
+}
+
+function updateExportBtnState() {
+  exportBtn.disabled = !(scannedLocatorsData.length > 0 && exportSelect.value);
 }
 
 formatSelect.addEventListener('change', renderScannedLocators);
+exportSelect.addEventListener('change', updateExportBtnState);
 
 scanBtn.addEventListener('click', () => {
   if (scanBtn.disabled) return;
@@ -691,9 +765,9 @@ scanBtn.addEventListener('click', () => {
   scanBtn.textContent = 'Scanning...';
   safeEval(
     `(${scanPageElements.toString()})()`,
-    (results, isException) => {
+    (resultsData, isException) => {
       scanBtn.textContent = '⚡ Scan Page';
-      if (isException) {
+      if (isException || !resultsData) {
         scanResultsWrap.innerHTML = '<div class="empty-msg">Error scanning the page.</div>';
         return;
       }
@@ -701,10 +775,107 @@ scanBtn.addEventListener('click', () => {
       scanBtn.classList.add('scanned');
       scannerSection.classList.add('scanned-active');
 
-      scannedLocatorsData = results || [];
+      scannedPageTitle = resultsData.title || 'ScannedPage';
+      scannedLocatorsData = resultsData.items || [];
       renderScannedLocators();
     }
   );
+});
+
+// Helper utilities for Python page object class generation
+function toPascalCase(str) {
+  if (!str) return 'ScannedPageLocators';
+  const words = str.replace(/[^a-zA-Z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 'ScannedPageLocators';
+  let pascal = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+  return pascal.endsWith('Locators') ? pascal : `${pascal}Locators`;
+}
+
+function toSnakeCase(str) {
+  if (!str) return 'locator';
+  let cleaned = str
+    .replace(/\[.*?\]/g, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/data-testid\s*=\s*["']?([^"']+)["']?/i, '$1')
+    .replace(/[^a-zA-Z0-9\s_]/g, ' ')
+    .trim();
+
+  if (!cleaned) cleaned = 'locator';
+
+  let snake = cleaned
+    .replace(/([a-z])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/[\s_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  if (!snake || /^\d/.test(snake)) {
+    snake = 'loc_' + snake;
+  }
+  return snake;
+}
+
+function generatePythonCode() {
+  const className = toPascalCase(scannedPageTitle);
+  const selectedFormat = formatSelect.value;
+  const lines = [
+    'from selenium.webdriver.common.by import By',
+    '',
+    '',
+    `class ${className}:`
+  ];
+
+  const usedNames = new Set();
+
+  scannedLocatorsData.forEach(item => {
+    const locatorStr = selectedFormat === 'xpath' ? item.xpath : item.css;
+    const isXpath = locatorStr.startsWith('//') || locatorStr.startsWith('(') || locatorStr.startsWith('./');
+    const byType = isXpath ? 'By.XPATH' : 'By.CSS_SELECTOR';
+
+    const sourceText = item.rawText || item.label;
+    let baseName = toSnakeCase(sourceText);
+    const typeSuffix = toSnakeCase(item.type || 'locator');
+
+    // Smart suffixing: Append type suffix if not already present at the end
+    if (!baseName.endsWith(`_${typeSuffix}`) && baseName !== typeSuffix) {
+      baseName = `${baseName}_${typeSuffix}`;
+    }
+
+    let uniqueVarName = baseName;
+    let count = 1;
+
+    while (usedNames.has(uniqueVarName)) {
+      uniqueVarName = `${baseName}_${count}`;
+      count++;
+    }
+    usedNames.add(uniqueVarName);
+
+    lines.push(`    ${uniqueVarName} = (${byType}, "${locatorStr.replace(/"/g, '\\"')}")`);
+  });
+
+  return lines.join('\n') + '\n';
+}
+
+function downloadFile(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+exportBtn.addEventListener('click', () => {
+  if (exportBtn.disabled || !exportSelect.value) return;
+
+  if (exportSelect.value === 'python') {
+    const pythonContent = generatePythonCode();
+    const className = toPascalCase(scannedPageTitle);
+    const fileName = `${toSnakeCase(className)}.py`;
+    downloadFile(fileName, pythonContent);
+  }
 });
 
 // --- Page Scanner Resizer Handle Event Handler ---
