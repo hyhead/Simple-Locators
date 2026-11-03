@@ -52,6 +52,25 @@
       </div>
     </div>
 
+    <!-- Relative Locator Section -->
+    <div class="section relative-section">
+      <div class="header">
+        <span class="label relative-label">Relative Locator Tracker</span>
+        <div class="relative-controls">
+          <button id="pick-source-btn" class="scan-btn rel-btn">1️⃣ Pick Reference</button>
+          <button id="pick-dest-btn" class="scan-btn rel-btn" disabled>2️⃣ Pick Target</button>
+          <button id="reset-rel-btn" class="icon-btn reset-rel-btn" title="Reset Relative Selection" disabled>↺</button>
+        </div>
+      </div>
+      <div id="relative-status" class="empty-msg">Click "1️⃣ Pick Reference" to select the source element on page.</div>
+      <div class="locator-wrap relative-locator-wrap" id="relative-wrap" hidden>
+        <code id="relative-val" title="Hover to highlight relative locator on page"></code>
+        <button id="copy-relative" class="icon-btn" title="Copy Relative XPath">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+      </div>
+    </div>
+
     <!-- Page Scanner (Middle & Featured) -->
     <div class="section scanner-section">
       <div class="header">
@@ -65,6 +84,8 @@
           <select id="export-format" class="format-select export-select" title="Export File Format">
             <option value="" disabled selected>Export As...</option>
             <option value="python">Python (.py)</option>
+            <option value="typescript">TypeScript / Playwright (.ts)</option>
+            <option value="java">Java / Selenium (.java)</option>
           </select>
           <button id="export-btn" class="scan-btn export-btn" disabled title="Export Locators to File">📥 Export</button>
         </div>

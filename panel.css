@@ -211,6 +211,72 @@ code.error-highlight:hover {
   border: 1px solid rgba(242, 139, 130, 0.4);
 }
 
+/* Relative Locator Section */
+.relative-section {
+  background: #26282b;
+  border: 1px solid rgba(192, 132, 247, 0.35);
+  border-radius: 6px;
+  padding: 10px;
+  transition: border-color 0.2s ease;
+}
+
+.relative-section.active {
+  border-color: rgba(192, 132, 247, 0.7);
+}
+
+.relative-label {
+  color: #c084fc;
+}
+
+.relative-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.relative-locator-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.relative-locator-wrap[hidden] {
+  display: none;
+}
+
+.relative-locator-wrap code {
+  flex: 1;
+  min-width: 0;
+}
+
+.rel-btn {
+  background: #c084fc;
+  color: #121212;
+  border: 1px solid #c084fc;
+  padding: 4px 8px;
+  font-weight: 600;
+}
+
+.rel-btn:hover:not(:disabled) {
+  background: #d8b4fe;
+  box-shadow: 0 0 10px rgba(192, 132, 247, 0.45);
+}
+
+.reset-rel-btn {
+  background: #292a2d;
+  color: #c084fc;
+  border-color: rgba(192, 132, 247, 0.4);
+  width: 24px;
+  height: 24px;
+}
+
+.reset-rel-btn:hover:not(:disabled) {
+  background: #35363a;
+  border-color: #c084fc;
+  color: #d8b4fe;
+}
+
 /* Page Scanner Section */
 .scanner-section {
   position: relative;

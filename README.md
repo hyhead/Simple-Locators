@@ -7,6 +7,8 @@ Simple Locators is a Chrome DevTools extension that generates, tests, scans, and
 * **Instant Selector Generation**: Automatically generates optimized CSS Selectors and XPath expressions whenever an element is inspected.
 * **Live Selector Tester**: Test any custom CSS or XPath query in real time with live match count badges and on-page overlays.
 * **⚡ Page Scanner**: Instantly scans and lists up to 50 interactable elements (inputs, buttons, links, `data-testid`). Includes a draggable handle to resize the results pane.
+* **Locator Export**: Export scanned locators as Selenium Python or Java classes, or a Playwright TypeScript page-object class.
+* **Relative XPath Builder**: Pick a reference element and a target element to generate an XPath relative to their nearest shared ancestor.
 * **Hover & Select**: Hover over any locator box to highlight matching elements on the webpage, or click to copy the locator and jump directly to the element in the DOM tree.
 * **Duplicate Match Warnings**: Highlights locators in red with a warning icon (`⚠`) whenever a selector matches multiple elements.
 * **iFrame & SPA Support**: Detects `<iframe>` contexts, safely handles restricted browser pages, and auto-resets when navigating across SPA routes.
@@ -26,6 +28,8 @@ Simple Locators is a Chrome DevTools extension that generates, tests, scans, and
 4. View generated **CSS Selector** and **XPath** values, hover to highlight, or click to copy and focus in the DOM tree.
 5. Use the **Live Selector Tester** at the top to type and test custom CSS selectors or XPath queries against the active page.
 6. Drag the resize handle below the scanner section to expand or collapse the scanned element list.
+7. Use **Relative Locator Tracker** to pick a reference and target element; the generated XPath uses their nearest shared ancestor.
+8. Select **Python (.py)**, **TypeScript / Playwright (.ts)**, or **Java / Selenium (.java)** under **Export As...** to download the scanned locators in that format.
 
 ## How Selectors are Generated
 

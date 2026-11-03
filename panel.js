@@ -639,7 +639,6 @@ function scanPageElements() {
       let cssLoc = getCssSelector(el);
       let xpathLoc = getXPath(el);
 
-      // Verify uniqueness check in page scanner: if returned locator fetches multiple elements, update accordingly
       if (countXPathMatches(xpathLoc) > 1) {
         try {
           const res = document.evaluate(xpathLoc, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
@@ -677,6 +676,8 @@ function scanPageElements() {
       results.push({
         label: displayLabel,
         rawText: getRawText(el) || displayLabel,
+        tag: el.tagName.toLowerCase(),
+        testId: testId || '',
         type: getElementType(el),
         css: cssLoc,
         xpath: xpathLoc
@@ -1036,6 +1037,23 @@ function toSnakeCase(str) {
   return snake;
 }
 
+function toCamelCase(str) {
+  const words = toSnakeCase(str).split('_').filter(Boolean);
+  const camelCase = words.map((word, index) => {
+    const normalized = word.toLowerCase();
+    return index === 0 ? normalized : normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }).join('');
+  const reservedNames = new Set([
+    'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+    'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'false',
+    'finally', 'for', 'function', 'if', 'implements', 'import', 'in', 'instanceof',
+    'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public',
+    'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'type',
+    'typeof', 'var', 'void', 'while', 'with', 'yield'
+  ]);
+  return reservedNames.has(camelCase) ? `locator${camelCase.charAt(0).toUpperCase()}${camelCase.slice(1)}` : camelCase;
+}
+
 function generatePythonCode() {
   const className = toPascalCase(scannedPageTitle);
   const selectedFormat = formatSelect.value;
@@ -1057,7 +1075,6 @@ function generatePythonCode() {
     let baseName = toSnakeCase(sourceText);
     const typeSuffix = toSnakeCase(item.type || 'locator');
 
-    // Smart suffixing: Append type suffix if not already present at the end
     if (!baseName.endsWith(`_${typeSuffix}`) && baseName !== typeSuffix) {
       baseName = `${baseName}_${typeSuffix}`;
     }
@@ -1073,6 +1090,91 @@ function generatePythonCode() {
 
     lines.push(`    ${uniqueVarName} = (${byType}, "${locatorStr.replace(/"/g, '\\"')}")`);
   });
+
+  return lines.join('\n') + '\n';
+}
+
+function generateJavaCode() {
+  const className = toPascalCase(scannedPageTitle);
+  const selectedFormat = formatSelect.value;
+  const usedNames = new Set();
+  const locators = scannedLocatorsData.map(item => {
+    const sourceText = item.testId || item.rawText || item.label;
+    let baseName = toSnakeCase(sourceText);
+    const typeSuffix = toSnakeCase(item.type || 'locator');
+
+    if (!baseName.endsWith(`_${typeSuffix}`) && baseName !== typeSuffix) {
+      baseName = `${baseName}_${typeSuffix}`;
+    }
+
+    let name = baseName.toUpperCase();
+    let count = 1;
+    while (usedNames.has(name)) {
+      name = `${baseName}_${count}`.toUpperCase();
+      count++;
+    }
+    usedNames.add(name);
+
+    const locatorString = selectedFormat === 'xpath' ? item.xpath : item.css;
+    const byMethod = selectedFormat === 'xpath' ? 'xpath' : 'cssSelector';
+    return { name, locatorString, byMethod };
+  });
+
+  const lines = [
+    'import org.openqa.selenium.By;',
+    '',
+    `public class ${className} {`,
+    ...locators.map(({ name, locatorString, byMethod }) =>
+      `    public static final By ${name} = By.${byMethod}(${JSON.stringify(locatorString)});`
+    ),
+    '}'
+  ];
+
+  return lines.join('\n') + '\n';
+}
+
+function generateTypeScriptCode() {
+  const className = toPascalCase(scannedPageTitle);
+  const selectedFormat = formatSelect.value;
+  const usedNames = new Set(['page']);
+  const locators = scannedLocatorsData.map(item => {
+    const sourceText = item.testId || item.rawText || item.label;
+    const baseName = toCamelCase(sourceText);
+    let name = baseName;
+    let count = 1;
+
+    while (usedNames.has(name)) {
+      name = `${baseName}${count}`;
+      count++;
+    }
+    usedNames.add(name);
+
+    let locator;
+    if (item.testId) {
+      locator = `this.page.getByTestId(${JSON.stringify(item.testId)})`;
+    } else if (['a', 'button'].includes(item.tag) && item.rawText) {
+      locator = `this.page.locator(${JSON.stringify(item.tag)}).filter({ hasText: ${JSON.stringify(item.rawText)} })`;
+    } else {
+      const locatorString = selectedFormat === 'xpath' ? item.xpath : item.css;
+      locator = `this.page.locator(${JSON.stringify(locatorString)})`;
+    }
+
+    return { name, locator };
+  });
+
+  const lines = [
+    `import { Locator, Page } from '@playwright/test';`,
+    '',
+    `export class ${className} {`,
+    '    readonly page: Page;',
+    ...locators.map(({ name }) => `    readonly ${name}: Locator;`),
+    '',
+    '    constructor(page: Page) {',
+    '        this.page = page;',
+    ...locators.map(({ name, locator }) => `        this.${name} = ${locator};`),
+    '    }',
+    '}'
+  ];
 
   return lines.join('\n') + '\n';
 }
@@ -1097,6 +1199,15 @@ exportBtn.addEventListener('click', () => {
     const className = toPascalCase(scannedPageTitle);
     const fileName = `${toSnakeCase(className)}.py`;
     downloadFile(fileName, pythonContent);
+  } else if (exportSelect.value === 'typescript') {
+    const typescriptContent = generateTypeScriptCode();
+    const className = toPascalCase(scannedPageTitle);
+    const fileName = `${toSnakeCase(className)}.ts`;
+    downloadFile(fileName, typescriptContent);
+  } else if (exportSelect.value === 'java') {
+    const javaContent = generateJavaCode();
+    const className = toPascalCase(scannedPageTitle);
+    downloadFile(`${className}.java`, javaContent);
   }
 });
 
@@ -1136,3 +1247,242 @@ function initScannerResizer() {
 }
 
 initScannerResizer();
+
+// --- Relative Locator Feature Implementation (Polling Bridge) ---
+let relState = {
+  source: null,
+  dest: null
+};
+
+const pickSourceBtn = document.getElementById('pick-source-btn');
+const pickDestBtn = document.getElementById('pick-dest-btn');
+const resetRelBtn = document.getElementById('reset-rel-btn');
+const relativeStatus = document.getElementById('relative-status');
+const relativeWrap = document.getElementById('relative-wrap');
+const relativeVal = document.getElementById('relative-val');
+const copyRelativeBtn = document.getElementById('copy-relative');
+const relativeSection = document.querySelector('.relative-section');
+let pickerPollInterval = null;
+
+function startElementPicker(onPicked) {
+  const pickerCode = `
+    (function() {
+      if (window.__simple_locators_picking) return;
+      window.__simple_locators_picking = true;
+      window.__simple_locators_picked = null;
+
+      const overlay = document.createElement('div');
+      overlay.id = '__rel_picker_overlay__';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999999;cursor:crosshair;pointer-events:none;background:rgba(192,132,247,0.08);';
+
+      const tooltip = document.createElement('div');
+      tooltip.id = '__rel_picker_tooltip__';
+      tooltip.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#202124;color:#c084fc;padding:8px 16px;border:1px solid #c084fc;border-radius:4px;font-family:sans-serif;font-size:12px;z-index:1000000000;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,0.5);';
+      tooltip.textContent = 'Click element on page to select (Press ESC to cancel)';
+
+      const box = document.createElement('div');
+      box.id = '__rel_picker_box__';
+      box.style.cssText = 'position:fixed;pointer-events:none;z-index:1000000000;background:rgba(192,132,247,0.3);border:2px solid #c084fc;border-radius:2px;box-sizing:border-box;display:none;';
+
+      document.body.appendChild(overlay);
+      document.body.appendChild(tooltip);
+      document.body.appendChild(box);
+
+      let hovered = null;
+
+      function onMove(e) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        if (!el || el === overlay || el === tooltip || el === box) return;
+        hovered = el;
+        const rect = el.getBoundingClientRect();
+        box.style.display = 'block';
+        box.style.top = rect.top + 'px';
+        box.style.left = rect.left + 'px';
+        box.style.width = rect.width + 'px';
+        box.style.height = rect.height + 'px';
+      }
+
+      function cleanup() {
+        const o = document.getElementById('__rel_picker_overlay__'); if (o) o.remove();
+        const t = document.getElementById('__rel_picker_tooltip__'); if (t) t.remove();
+        const b = document.getElementById('__rel_picker_box__'); if (b) b.remove();
+        document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('click', onClick, true);
+        document.removeEventListener('keydown', onKey, true);
+        window.__simple_locators_picking = false;
+      }
+
+      function onClick(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const target = hovered;
+        if (!target) {
+          cleanup();
+          window.__simple_locators_picked = { cancelled: true };
+          return;
+        }
+
+        const tag = target.tagName.toLowerCase();
+        const text = target.textContent ? target.textContent.trim().replace(/\\s+/g, ' ') : '';
+        const id = target.id || '';
+        const testId = target.getAttribute('data-testid') || '';
+
+        function getAbsXPath(el) {
+          if (el.id) return '//*[@id="' + el.id + '"]';
+          const tag = el.tagName.toLowerCase();
+          if (el === document.body) return '/html/body';
+          let ix = 0;
+          const siblings = el.parentNode ? el.parentNode.childNodes : [];
+          for (let i = 0; i < siblings.length; i++) {
+            const sibling = siblings[i];
+            if (sibling === el) {
+              return getAbsXPath(el.parentNode) + '/' + tag + '[' + (ix + 1) + ']';
+            }
+            if (sibling.nodeType === 1 && sibling.tagName === el.tagName) {
+              ix++;
+            }
+          }
+          return '//' + tag;
+        }
+
+        function getAncestors(el) {
+          const ancestors = [];
+          let current = el;
+          while (current && current.nodeType === 1) {
+            ancestors.push({
+              tag: current.tagName.toLowerCase(),
+              xpath: getAbsXPath(current)
+            });
+            if (current === document.body) break;
+            current = current.parentElement;
+          }
+          return ancestors;
+        }
+
+        window.__simple_locators_picked = {
+          tag: tag,
+          text: text,
+          id: id,
+          testId: testId,
+          xpath: getAbsXPath(target),
+          ancestors: getAncestors(target)
+        };
+        cleanup();
+      }
+
+      function onKey(e) {
+        if (e.key === 'Escape') {
+          cleanup();
+          window.__simple_locators_picked = { cancelled: true };
+        }
+      }
+
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('click', onClick, true);
+      document.addEventListener('keydown', onKey, true);
+    })();
+  `;
+
+  safeEval(pickerCode);
+
+  if (pickerPollInterval) clearInterval(pickerPollInterval);
+  pickerPollInterval = setInterval(() => {
+    safeEval('window.__simple_locators_picked', (result) => {
+      if (result !== undefined && result !== null) {
+        clearInterval(pickerPollInterval);
+        pickerPollInterval = null;
+        safeEval('window.__simple_locators_picked = null');
+        onPicked(result);
+      }
+    });
+  }, 300);
+}
+
+function generateRelativeXPath(source, dest) {
+  function xpathLiteral(value) {
+    if (!value.includes('"')) return `"${value}"`;
+    if (!value.includes("'")) return `'${value}'`;
+    const parts = value.split("'");
+    return `concat(${parts.map(part => `'${part}'`).join(`, "'", `)})`;
+  }
+
+  let anchor = '';
+  if (source.testId) {
+    anchor = `//*[@data-testid=${xpathLiteral(source.testId)}]`;
+  } else if (source.id) {
+    anchor = `//*[@id=${xpathLiteral(source.id)}]`;
+  } else if (source.text && source.text.length < 40) {
+    anchor = `//*[text()=${xpathLiteral(source.text)}]`;
+  } else {
+    anchor = source.xpath;
+  }
+
+  const commonAncestor = source.ancestors && dest.ancestors &&
+    source.ancestors.find(sourceAncestor =>
+      dest.ancestors.some(destAncestor => destAncestor.xpath === sourceAncestor.xpath)
+    );
+
+  if (!commonAncestor) return dest.xpath;
+
+  const sourceIsCommonAncestor = source.ancestors[0].xpath === commonAncestor.xpath;
+  const axis = sourceIsCommonAncestor ? 'ancestor-or-self' : 'ancestor';
+  const destTextPred = dest.text && dest.text.length < 40
+    ? `[text()=${xpathLiteral(dest.text)}]`
+    : '';
+
+  return `${anchor}/${axis}::${commonAncestor.tag}//${dest.tag}${destTextPred}`;
+}
+
+pickSourceBtn.addEventListener('click', () => {
+  relativeStatus.textContent = 'Click reference element on the page...';
+  startElementPicker((data) => {
+    if (data && !data.cancelled) {
+      relState.source = data;
+      pickSourceBtn.textContent = '✅ Reference Set';
+      pickSourceBtn.disabled = true;
+      pickDestBtn.disabled = false;
+      resetRelBtn.disabled = false;
+      relativeSection.classList.add('active');
+      relativeStatus.textContent = `Source: <${data.tag}> "${data.text || data.id || 'element'}". Now click "2️⃣ Pick Target".`;
+    } else {
+      relativeStatus.textContent = 'Selection cancelled.';
+    }
+  });
+});
+
+pickDestBtn.addEventListener('click', () => {
+  relativeStatus.textContent = 'Click target element on the page...';
+  startElementPicker((data) => {
+    if (data && !data.cancelled) {
+      relState.dest = data;
+      pickDestBtn.textContent = '✅ Target Set';
+      pickDestBtn.disabled = true;
+
+      const relXPath = generateRelativeXPath(relState.source, relState.dest);
+      relativeVal.textContent = relXPath;
+      relativeWrap.hidden = false;
+      relativeStatus.textContent = 'Relative XPath generated successfully!';
+    } else {
+      relativeStatus.textContent = 'Selection cancelled.';
+    }
+  });
+});
+
+resetRelBtn.addEventListener('click', () => {
+  if (pickerPollInterval) clearInterval(pickerPollInterval);
+  relState.source = null;
+  relState.dest = null;
+  pickSourceBtn.textContent = '1️⃣ Pick Reference';
+  pickSourceBtn.disabled = false;
+  pickDestBtn.disabled = true;
+  resetRelBtn.disabled = true;
+  relativeSection.classList.remove('active');
+  relativeWrap.hidden = true;
+  relativeStatus.textContent = 'Click "1️⃣ Pick Reference" to select the source element on page.';
+});
+
+setupCopy(copyRelativeBtn, () => relativeVal.textContent, copyRelativeBtn, () => 'xpath');
+setupCopy(relativeVal, () => relativeVal.textContent, copyRelativeBtn, () => 'xpath');
+relativeVal.addEventListener('mouseenter', () => triggerHighlight(() => relativeVal.textContent, 'xpath'));
+relativeVal.addEventListener('mouseleave', removeHighlight);
